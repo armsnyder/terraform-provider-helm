@@ -222,6 +222,37 @@ func TestAccResourceRelease_update(t *testing.T) {
 	})
 }
 
+func TestAccResourceRelease_remoteChartWithVersion(t *testing.T) {
+	// Create a local chart with the same name as the desired remote chart, but on an older version.
+	chartName := "mariadb"
+	if _, err := os.Lstat(chartName); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("filepath %q should not exist prior to running the test", chartName)
+	}
+	if err := os.Symlink(filepath.Join("test-fixtures", "charts", "mariadb-decoy"), chartName); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(chartName)
+
+	name := fmt.Sprintf("test-update-%s", acctest.RandString(10))
+	namespace := fmt.Sprintf("%s-%s", testNamespace, acctest.RandString(10))
+	// Delete namespace automatically created by helm after checks
+	defer deleteNamespace(t, namespace)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t, namespace) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckHelmReleaseDestroy(namespace),
+		Steps: []resource.TestStep{{
+			Config: testAccHelmReleaseConfigBasic(testResourceName, namespace, name, "7.0.1"),
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr("helm_release.test", "metadata.0.chart", chartName),
+				resource.TestCheckResourceAttr("helm_release.test", "metadata.0.version", "7.0.1"),
+				resource.TestCheckResourceAttr("helm_release.test", "status", release.StatusDeployed.String()),
+			),
+		}},
+	})
+}
+
 func TestAccResourceRelease_emptyValuesList(t *testing.T) {
 	name := fmt.Sprintf("test-empty-values-list-%s", acctest.RandString(10))
 	namespace := fmt.Sprintf("%s-%s", testNamespace, acctest.RandString(10))
